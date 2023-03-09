@@ -7,20 +7,27 @@
 #include <time.h>       /* time */
 #include <ctime>
 #include <omp.h>
+#include "gnuplot-iostream.h" // include gnuplot header
+#include <boost/tuple/tuple.hpp>
+#include <chrono>
+#include <thread>
 
 using namespace std;
 
-//Low ratio, low amount of approximations
-#define ratio 1.0
-#define DT 1.0
+//Low far, low amount of approximations
+// #define far 2.0
+//0.15 is sweet spot
+double far = 0.0001;
+#define DT 0.01
 #define G 6.67e-11
-#define SIZE 10
+// #define G 6.67e-2
+#define SIZE 9e7
 #define TIMELIMIT 100
-#define EPSILON 0.001
+#define EPSILON 0.1
 
 class Body {
 public:
-    double x, y;
+    double x, y = 0;
 
     double v_x, v_y = 0;
 
@@ -57,6 +64,54 @@ public:
         return os;
     }
 
+    Body & operator+(const Body& b) {
+        this->x = this->x + b.x;
+        this->y = this->y + b.y;
+        this->v_x = this->v_x + b.v_x;
+        this->v_y = this->v_y + b.v_y;
+        this->f_x = this->f_x + b.f_x;
+        this->f_y = this->f_y + b.f_y;
+        this->mass = this->mass + b.mass;
+
+        return *this;
+    }
+
+    Body & operator/(const double& b) {
+        this->x = this->x / b;
+        this->y = this->y / b;
+        this->v_x = this->v_x / b;
+        this->v_y = this->v_y / b;
+        this->f_x = this->f_x / b;
+        this->f_y = this->f_y / b;
+        this->mass = this->mass / b;
+
+        return *this;
+    }
+
+    Body & operator*(const Body& b) {
+        this->x = this->x * b.x;
+        this->y = this->y * b.y;
+        this->v_x = this->v_x * b.v_x;
+        this->v_y = this->v_y * b.v_y;
+        this->f_x = this->f_x * b.f_x;
+        this->f_y = this->f_y * b.f_y;
+        this->mass = this->mass * b.mass;
+
+        return *this;
+    }
+
+    Body & operator*(const double& b) {
+        this->x = this->x * b;
+        this->y = this->y * b;
+        this->v_x = this->v_x * b;
+        this->v_y = this->v_y * b;
+        this->f_x = this->f_x * b;
+        this->f_y = this->f_y * b;
+        this->mass = this->mass * b;
+
+        return *this;
+    }
+
     bool operator==(const Body& b) {
         return fabs(this->x - b.x) < EPSILON && fabs(this->y - b.y) < EPSILON;
     }
@@ -66,7 +121,7 @@ public:
 void calculateForce(Body & lhs, const Body & rhs) {
     double distance = sqrt( pow(lhs.x - rhs.x,2) + pow(lhs.y - rhs.y,2));
     double magnitude = (G*lhs.mass*rhs.mass) / pow(distance,2);
-    vector<double> direction = {lhs.x - rhs.x, lhs.y - rhs.y};
+    vector<double> direction = {rhs.x - lhs.x, rhs.y - lhs.y};
     lhs.f_x += magnitude*direction[0]/distance;
     lhs.f_y += magnitude*direction[1]/distance;
 }
@@ -74,15 +129,12 @@ void calculateForce(Body & lhs, const Body & rhs) {
 
 class QuadTree {
 private:
-    double avg_x, avg_y = 0;
-    double avg_v_x, avg_v_y = 0;
-    double avg_f_x, avg_f_y = 0;
-    double avg_mass = 0;
-    int bodiesInFrame;
+    Body avgBody = Body();
+    int bodiesInFrame = 0;
     const int capacity = 1;
     QuadTree* children[4] = { nullptr };
-    vector<Body> bodies;
-    double x, y, width, height;
+    vector<Body> bodies; //Vector size is maximum 1
+    double x, y, width, height = 0;
 
 public:
     friend ostream& operator<<(ostream& os, const QuadTree& f) {
@@ -99,6 +151,14 @@ public:
         this->height = height;
     }
 
+    ~QuadTree() {
+        if (!isLeaf()) {
+            for (int i = 0; i < 4; i++) {
+                delete children[i];
+            }
+        }
+    }
+
     bool isLeaf() {
         return children[0] == nullptr;
     }
@@ -111,42 +171,13 @@ public:
         children[2] = new QuadTree(x, y + halfHeight, halfWidth, halfHeight);
         children[3] = new QuadTree(x + halfWidth, y + halfHeight, halfWidth, halfHeight);
         
-        // Move the current body in this quadrant into on of its children
-        if (bodies.size() == 1) {
-            Body a = bodies[0];
-            bodies.pop_back();
-            for (int i = 0; i < 4; i++) {
-                if (children[i]->contains(a)) {
-                    children[i]->insert(a);
-                    break; //Shouldn't matter
-                }
-            }
-        }
     }
 
     void updateAverage(Body body) {
-        avg_x *= bodiesInFrame;
-        avg_y *= bodiesInFrame;
-        avg_v_x *= bodiesInFrame;
-        avg_v_y *= bodiesInFrame;
-        avg_f_x *= bodiesInFrame;
-        avg_mass *= bodiesInFrame;
-        
-        avg_x += body.x;
-        avg_y += body.y;
-        avg_v_x += body.v_x;
-        avg_v_y += body.v_y;
-        avg_f_x += body.f_x;
-        avg_f_y += body.f_y;
-        avg_mass += body.mass;
-
+        avgBody = avgBody * bodiesInFrame;
+        avgBody = avgBody + body;
         bodiesInFrame++;
-        avg_x /= bodiesInFrame;
-        avg_y /= bodiesInFrame;
-        avg_v_x /= bodiesInFrame;
-        avg_v_y /= bodiesInFrame;
-        avg_f_x /= bodiesInFrame;
-        avg_mass /= bodiesInFrame;
+        avgBody = avgBody / bodiesInFrame;
     }
 
     bool foundQuadrant = false;
@@ -160,16 +191,42 @@ public:
         }
 
         //This body will be inserted somewhere into this quadrant, update the quadrants averages
-
+        #pragma omp critical
         updateAverage(body);
 
+        bool pushedBack = false;
         if (bodies.size() < capacity && isLeaf()) {
-            bodies.push_back(body);
-            return true;
+            #pragma omp critical 
+            {
+            if (bodies.size() < capacity && isLeaf()) {
+                bodies.push_back(body);
+                pushedBack = true;
+            }
+            }
         }
+        if (pushedBack)
+            return true;
 
+        bool createdChildren = false;
+        //Double checking lock
         if (isLeaf()) {
-            subdivide();
+            #pragma omp critical
+            if (isLeaf()) {
+                subdivide();
+                createdChildren = true;
+                
+            }
+        }
+// Move the current body in this quadrant into on of its children
+        if (createdChildren) {
+            Body a = bodies[0];
+            bodies.pop_back();
+            for (int i = 0; i < 4; i++) {
+                if (children[i]->contains(a)) {
+                    children[i]->insert(a);
+                    break; //Shouldn't matter
+                }
+            }
         }
 
 
@@ -196,7 +253,7 @@ public:
 
     double quotient(const QuadTree & internalNode, const Body & b) {
         double s = internalNode.width;
-        double d = sqrt( pow(b.x - internalNode.avg_x,2) + pow(b.y - internalNode.avg_y,2));
+        double d = sqrt( pow(b.x - internalNode.avgBody.x,2) + pow(b.y - internalNode.avgBody.y,2));
         return s/d;
     }
 
@@ -207,6 +264,11 @@ public:
 
     //Updates the force on body b in current Quadrant
     void updateForce(Body & b) {
+        if (isLeaf() && bodies.size() == 0) {
+            //empty quadrant
+            return;
+        }
+
         double q = quotient(*this, b);
         // cout << "hi" << endl;
 
@@ -220,17 +282,17 @@ public:
             calculateForce(b, this->bodies[0]);
         }
 
-        //This is not a leaf, if the quotient is less than the ratio, treat the internal node as a single node
-        else if (q < ratio) {
+        //This is not a leaf, if the quotient is less than the far, treat the internal node as a single node
+        else if (q < far) {
             // cout << "APPROXIMATION ONLINE" << endl;
-            Body otherBody(this->avg_x, this->avg_y, this-> avg_v_x, this->avg_v_y, this->avg_f_x,
-                            this->avg_f_y,this->avg_mass);
-            if (b == otherBody) {
+            // Body otherBody(this->avg_x, this->avg_y, this-> avg_v_x, this->avg_v_y, this->avg_f_x,
+            //                 this->avg_f_y,this->avg_mass);
+            if (b == avgBody) {
                 return;
             }
-            calculateForce(b, otherBody);
+            calculateForce(b, avgBody);
         }
-        // If this quadrant isn't a leaf/external node and q is bigger than ratio, then recursively visit the children
+        // If this quadrant isn't a leaf/external node and q is bigger than far, then recursively visit the children
         else if(! this->isLeaf()) {
             // cout << 3 << endl;
             for (int i = 0; i < 4; i++) {
@@ -252,6 +314,8 @@ public:
         // cout << delta_p_x << endl;
         b.x += delta_p_x;
         b.y += delta_p_y;
+        b.f_x = 0;
+        b.f_y = 0;
     }
 
 };
@@ -265,7 +329,7 @@ double fRand(double fMin, double fMax)
 
 int main(int argc, char** argv) {
 
-    if (argc != 5) {
+    if (argc != 5 && argc != 6) {
         cout << "Incorrect amount of arguments!" << endl;
         return 0;
     }
@@ -275,19 +339,43 @@ int main(int argc, char** argv) {
 
     int gnumBodies = atoi(argv[1]);
     int numSteps = atoi(argv[2]);
-    double far = atoi(argv[3]);
+    far = atof(argv[3]);
     int nThreads = atoi(argv[4]);
+    string gui = "";
+
+
+    if (argc == 6)
+        gui = argv[5];
+
+    bool guiEnable = false;
+
+    if ( gui == "-gui")
+        guiEnable = true;
+
+    Gnuplot gp; // create a gnuplot object 
+    if (guiEnable) {
+        
+
+        gp << "set xrange [0:" << SIZE << "]\n";
+        gp << "set yrange [0:" << SIZE << "]\n";
+    }
+
+    cout << "gnumBodies: " << gnumBodies << endl;
+    cout << "numSteps: " << numSteps << endl;
+    cout << "far: " << far << endl;
+    cout << "nThreads: " << nThreads << endl;
     
     
     vector<Body> bodies(gnumBodies);
     for (int i = 0; i < gnumBodies; i++) {
-        bodies[i] = Body(fRand(0, SIZE), fRand(0, SIZE), fRand(100, 1000));
+        bodies[i] = Body(fRand(0, SIZE), fRand(0, SIZE), fRand(6e22, 2e30));
     }
 
     omp_set_num_threads(nThreads);
     auto start = omp_get_wtime();
     for (int i = 0; i < numSteps; i++) {
         QuadTree tree(0, 0, SIZE, SIZE);
+        #pragma omp parallel for
         for (int j = 0; j < gnumBodies; j++) {
             tree.insert(bodies[j]);
         }
@@ -300,8 +388,21 @@ int main(int argc, char** argv) {
         #pragma omp parallel for
         for (int j = 0; j < gnumBodies; j++) {
             tree.moveBody(bodies[j]);
-            if (j == 4)
-                cout << bodies[j] << endl;
+        }
+
+        // Plot the bodies using gnuplot
+        if (guiEnable) {
+            ofstream tmpfile("data.tmp");
+            for (int j = 0; j < gnumBodies; j++) {
+                tmpfile << bodies[j].x << " " << bodies[j].y << endl;
+            }
+            tmpfile.close();
+
+            gp << "plot 'data.tmp' with points title 'Step " << i << "'\n";
+
+            gp<<"pause 0.1\n"; //pause for 0.1 seconds before continuing
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            gp.flush();
         }
     }
 
