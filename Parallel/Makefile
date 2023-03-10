@@ -7,7 +7,7 @@ Body.o: Body.cpp
 	$(CC) -c $<
 
 QuadTree.o: QuadTree.cpp
-	$(CC) -c $<
+	$(CC) -c $< -fopenmp
 
 Other.o: Other.cpp
 	$(CC) -c $<

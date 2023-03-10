@@ -7,23 +7,16 @@
 #include <math.h>
 #include <cmath>
 #include <vector>
+#include <thread>
 
 using namespace std;
 
-    ostream& operator<<(ostream& os, const QuadTree& f) {
-        os << "Quadrant: " << endl;
-        os << f.x << ", " << f.y+f.height << "    " << f.x+f.width << ", " <<f.y+f.height << endl;
-        os << f.x << ", " << f.y << "    " << f.x+f.width << ", " <<f.y << endl;
-        return os;
-    }
-
-    QuadTree::~QuadTree() {
-        if (!isLeaf()) {
-            for (int i = 0; i < 4; i++) {
-                delete children[i];
-            }
-        }
-    }
+    // ostream& operator<<(ostream& os, const QuadTree& f) {
+    //     os << "Quadrant: " << endl;
+    //     os << f.x << ", " << f.y+f.height << "    " << f.x+f.width << ", " <<f.y+f.height << endl;
+    //     os << f.x << ", " << f.y << "    " << f.x+f.width << ", " <<f.y << endl;
+    //     return os;
+    // }
 
     bool QuadTree::isLeaf() {
         return children[0] == nullptr;
@@ -39,7 +32,7 @@ using namespace std;
         
     }
 
-    void QuadTree::updateAverage(Body body) {
+    void QuadTree::updateAverage(const Body& body) {
         avgBody = avgBody * bodiesInFrame;
         avgBody = avgBody + body;
         bodiesInFrame++;
@@ -121,10 +114,6 @@ using namespace std;
         return s/d;
     }
 
-    // double quotient(const QuadTree & internalNode, const Body & b) {
-    //     double d = sqrt( pow(b.x - internalNode.avg_x,2) + pow(b.y - internalNode.avg_y,2));
-    //     return d;
-    // }
 
     //Updates the force on body b in current Quadrant
     void QuadTree::updateForce(Body & b) {
@@ -138,8 +127,7 @@ using namespace std;
 
         
         if (this->isLeaf() && this->bodies.size() == 1) {
-            // cout << 1 << endl;
-            // cout << this->bodies[0] << endl;
+
             if (b == this->bodies[0]) {
                 return;
             }

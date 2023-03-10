@@ -22,8 +22,8 @@ public:
 
     Body(double x_, double y_, double mass_)  : x(x_), y(y_), mass(mass_) {}
 
-    Body(double x, double y, double v_x, double v_y, double f_x, double f_y, double mass) : x(x), y(y), v_x(v_x), v_y(v_y),
-                                                                                            f_x(f_x), f_y(f_y), mass(mass) {}
+    Body(double x_, double y_, double v_x_, double v_y_, double f_x_, double f_y_, double mass_) : x(x_), y(y_), v_x(v_x_), v_y(v_y_),
+                                                                                            f_x(f_x_), f_y(f_y_), mass(mass_) {}
 
 
 

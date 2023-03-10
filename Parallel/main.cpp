@@ -64,16 +64,17 @@ int main(int argc, char** argv) {
         for (int j = 0; j < gnumBodies; j++) {
             tree.insert(bodies[j]);
         }
-
         #pragma omp parallel for
         for (int j = 0; j < gnumBodies; j++) {
             tree.updateForce(bodies[j]);
         }
 
+
         #pragma omp parallel for
         for (int j = 0; j < gnumBodies; j++) {
             moveBody(bodies[j]);
         }
+
 
         // Plot the bodies using gnuplot
         if (guiEnable) {
